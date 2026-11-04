@@ -26,10 +26,18 @@ used because Web restricts plugin-declared combinations to a small whitelist
 
 ## How it works
 
-The plugin sets the CSS `zoom` property on the document root. `zoom` re-lays-out
-the page at the scaled size, so percentage- and viewport-sized children keep
-filling the window instead of overflowing; no viewport compensation is needed.
-Verified from 0.8× to 2.0× with no scrollbar growth.
+The plugin sets the CSS `zoom` property on the app shell element (`#root`). `zoom`
+re-lays-out that subtree at the scaled size, so percentage- and viewport-sized
+children keep filling the window instead of overflowing; no viewport compensation
+is needed. Verified from 0.8× to 2.0× at two viewport sizes with no scrollbar
+growth.
+
+Zooming `#root` rather than the document root is deliberate: dialogs, menus and
+toasts are portalled to `body` as `position: fixed` siblings of the shell. Zooming
+the document root scaled those portals too, while their positioning library still
+measured the unscaled viewport — which pushed them off-screen (the sidebar
+"More" menu then showed a single clipped row). With `#root` as the target the
+portals stay correctly anchored and fully usable.
 
 ## Install
 
@@ -45,6 +53,9 @@ is picked up.
 ## Notes
 
 - Scope is the whole Harness Web UI; it does not affect other sites.
+- Overlay surfaces (menus, dialogs, toasts) are portalled outside the zoomed
+  subtree, so they keep their 100% size while the rest of the interface scales.
+  They stay correctly anchored and usable.
 - The preference is per browser origin (`localStorage`), not per Harness profile.
 - Disabling or removing the plugin restores the page to 100%.
 

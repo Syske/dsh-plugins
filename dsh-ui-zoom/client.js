@@ -70,10 +70,22 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // The app shell lives in `#root`; dialogs, menus and toasts are portalled to
+    // `body` as `position: fixed` siblings of it. Zooming `documentElement` scales
+    // those portals too, but their positioning library still measures the
+    // unscaled viewport, so they land outside the window (the sidebar "More"
+    // menu showed a single clipped row). Zooming `#root` instead keeps the app
+    // filling the viewport at every factor with no overflow, and leaves the
+    // portals anchored correctly; they simply keep their 100% size.
+    function zoomTarget() {
+      return document.getElementById('root') || document.body
+    }
+
     function applyZoom(factor) {
-      const root = document.documentElement
-      if (factor === DEFAULT_FACTOR) root.style.removeProperty('zoom')
-      else root.style.zoom = String(factor)
+      const target = zoomTarget()
+      if (target === null) return
+      if (factor === DEFAULT_FACTOR) target.style.removeProperty('zoom')
+      else target.style.zoom = String(factor)
     }
 
     const zoomStore = (() => {
@@ -192,7 +204,7 @@ window.__ModuleLoader__.load({
       // Apply the remembered factor immediately, and keep it applied.
       ctx.effect(() => {
         applyZoom(zoomStore.get())
-        return () => { document.documentElement.style.removeProperty('zoom') }
+        return () => { zoomTarget().style.removeProperty('zoom') }
       }, 'dsh-ui-zoom: apply saved factor')
 
       // Mirror changes made in another tab.
