@@ -1,0 +1,60 @@
+{
+  "name": "dsh-ui-zoom",
+  "version": "0.1.0",
+  "description": "Whole-interface zoom for the DeepSeek Harness Web GUI: scale the entire UI (not just text) from Settings, with keyboard shortcuts and a remembered preference.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "The dsh-ui-zoom authors",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "harness-plugin",
+    "plugin",
+    "cordis",
+    "zoom",
+    "scale",
+    "accessibility",
+    "ui"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Syske/dsh-plugins.git",
+    "directory": "dsh-ui-zoom"
+  },
+  "bugs": {
+    "url": "https://github.com/Syske/dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/Syske/dsh-plugins/tree/main/dsh-ui-zoom#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

@@ -10,6 +10,7 @@ bundle. See each plugin's own README for details.
 | Plugin | Description |
 | --- | --- |
 | [dsh-deepseek-chat](./dsh-deepseek-chat) | Bring `chat.deepseek.com` into the DSH Web GUI as a chat panel: drives the real web app via a browser, reusing your DeepSeek web login session (no API key, no billing). Supports pulling and refreshing complete conversation history. |
+| [dsh-ui-zoom](./dsh-ui-zoom) | Whole-interface zoom for the DSH Web GUI: scales the sidebar, buttons, icons and text (50%–200%) from a Settings row, with keyboard shortcuts and a remembered preference. |
 
 ## Install a plugin
 
