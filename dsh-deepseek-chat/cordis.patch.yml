@@ -1,0 +1,7 @@
+# dsh-deepseek-chat bundle patch: inserts the dual-face plugin row into the web profile.
+# The node half (exports ".") runs in the Host process (drives a real browser at
+# chat.deepseek.com, /api/dsh-deepseek-chat routes); the browser half (exports "./client")
+# runs in the web GUI and registers the sidebar entry + central chat panel.
+- insert:
+    - id: dsh-deepseek-chat
+      name: 'dsh-deepseek-chat'

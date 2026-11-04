@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "title": "DeepSeek 网页聊天",
+    "description": "在侧边栏打开 DeepSeek 网页聊天面板，复用你的 DeepSeek 网页登录会话，无需 API key。"
+  },
+  "panel": {
+    "title": "DeepSeek 网页聊天",
+    "openLogin": "打开登录窗口",
+    "closeBrowser": "关闭浏览器",
+    "newChat": "新对话",
+    "send": "发送",
+    "stop": "停止",
+    "placeholder": "输入消息，Enter 发送",
+    "notLoggedIn": "请先打开登录窗口完成 DeepSeek 网页登录",
+    "busy": "正在生成回复…",
+    "hint": "Enter 发送 · Shift+Enter 换行",
+    "statusLoggedIn": "已登录",
+    "statusNotLoggedIn": "未登录",
+    "statusLaunching": "浏览器启动中…",
+    "statusError": "引擎错误",
+    "statusUnknown": "状态未知",
+    "deepThink": "深度思考",
+    "search": "智能搜索",
+    "roleYou": "你",
+    "emptyTitle": "开始新的 DeepSeek 对话",
+    "emptyBody": "在下方输入你的问题，回复通过你的 DeepSeek 网页会话生成。",
+    "streaming": "生成中",
+    "actionOpenLoginHint": "在弹出的浏览器窗口中登录 DeepSeek 网页账号"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "name": "dsh-deepseek-chat",
+  "version": "0.1.0",
+  "description": "DeepSeek 网页聊天插件：在 DeepSeek Harness Web GUI 侧边栏打开聊天面板，通过真实浏览器驱动 chat.deepseek.com，复用网页登录会话，无需 API key、无 token 计费；支持拉取并刷新完整历史会话。",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "The dsh-deepseek-chat authors",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "deepseek",
+    "web-chat",
+    "chat.deepseek.com",
+    "playwright",
+    "harness-plugin",
+    "plugin",
+    "cordis"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Syske/dsh-plugins.git",
+    "directory": "dsh-deepseek-chat"
+  },
+  "bugs": {
+    "url": "https://github.com/Syske/dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/Syske/dsh-plugins/tree/main/dsh-deepseek-chat#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "engine/*.js",
+    "store.js",
+    "routes.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}

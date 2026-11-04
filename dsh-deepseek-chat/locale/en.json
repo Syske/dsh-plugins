@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "title": "DeepSeek Web Chat",
+    "description": "Open a DeepSeek web chat panel in the sidebar, reusing your DeepSeek web login session — no API key required."
+  },
+  "panel": {
+    "title": "DeepSeek Web Chat",
+    "openLogin": "Open login window",
+    "closeBrowser": "Close browser",
+    "newChat": "New chat",
+    "send": "Send",
+    "stop": "Stop",
+    "placeholder": "Type a message, Enter to send",
+    "notLoggedIn": "Open the login window and sign in to DeepSeek first",
+    "busy": "Generating…",
+    "hint": "Enter to send · Shift+Enter for newline",
+    "statusLoggedIn": "Signed in",
+    "statusNotLoggedIn": "Not signed in",
+    "statusLaunching": "Starting browser…",
+    "statusError": "Engine error",
+    "statusUnknown": "Unknown",
+    "deepThink": "Deep Think",
+    "search": "Web Search",
+    "roleYou": "You",
+    "emptyTitle": "Start a new DeepSeek conversation",
+    "emptyBody": "Type your question below; replies are generated through your DeepSeek web session.",
+    "streaming": "Thinking",
+    "actionOpenLoginHint": "Sign in to DeepSeek in the popup browser window"
+  }
+}
