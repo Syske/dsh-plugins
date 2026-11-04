@@ -42,7 +42,7 @@ window.__ModuleLoader__.load({
       'panel.busy': '正在生成回复…', 'panel.hint': 'Enter 发送 · Shift+Enter 换行',
       'panel.statusLoggedIn': '已登录', 'panel.statusNotLoggedIn': '未登录', 'panel.statusLaunching': '浏览器启动中…',
       'panel.statusError': '引擎错误', 'panel.statusUnknown': '状态未知', 'panel.statusIdle': '已登录 · 空闲（下次提问自动唤醒）',
-      'panel.deepThink': '深度思考', 'panel.search': '智能搜索', 'panel.roleYou': '你',
+      'panel.deepThink': '深度思考', 'panel.search': '智能搜索', 'panel.roleYou': '你', 'panel.thinking': '思考过程',
       'panel.emptyTitle': '开始新的 DeepSeek 对话', 'panel.emptyBody': '在下方输入你的问题，回复通过你的 DeepSeek 网页会话生成。',
       'panel.streaming': '生成中', 'panel.noChats': '暂无对话',
       'panel.pullHistory': '拉取历史', 'panel.recoverHint': '从网页端拉取已有会话到本地',
@@ -61,7 +61,7 @@ window.__ModuleLoader__.load({
       'panel.busy': 'Generating…', 'panel.hint': 'Enter to send · Shift+Enter for newline',
       'panel.statusLoggedIn': 'Signed in', 'panel.statusNotLoggedIn': 'Not signed in', 'panel.statusLaunching': 'Starting browser…',
       'panel.statusError': 'Engine error', 'panel.statusUnknown': 'Unknown', 'panel.statusIdle': 'Signed in · idle (auto-wakes on next message)',
-      'panel.deepThink': 'Deep Think', 'panel.search': 'Web Search', 'panel.roleYou': 'You',
+      'panel.deepThink': 'Deep Think', 'panel.search': 'Web Search', 'panel.roleYou': 'You', 'panel.thinking': 'Thinking',
       'panel.emptyTitle': 'Start a new DeepSeek conversation', 'panel.emptyBody': 'Type your question below; replies are generated through your DeepSeek web session.',
       'panel.streaming': 'Thinking', 'panel.noChats': 'No conversations',
       'panel.pullHistory': 'Pull history', 'panel.recoverHint': 'Import existing web conversations into local',
@@ -92,6 +92,111 @@ window.__ModuleLoader__.load({
     // --- tiny markdown renderer -------------------------------------------------
     // Handles fenced code, headings, lists, blockquotes, <details> (R1 thinking)
     // blocks, inline code, bold/italic, links. Plain text otherwise.
+    function fallbackCopy(text, done) {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        done()
+      } catch { /* ignore */ }
+    }
+
+    // --- lightweight syntax highlighting ---------------------------------------
+    // A single-pass tokenizer over each line: comments, strings, numbers,
+    // keywords and punctuation, with type/function names recognised from the
+    // context instead of a per-language grammar. Token kinds map to the
+    // `ddc-tok-*` classes in STYLE, which flip with the host light/dark theme.
+    const HL_KEYWORDS = {
+      js: 'const|let|var|function|return|if|else|for|while|do|switch|case|default|break|continue|new|class|extends|import|export|from|as|async|await|yield|try|catch|finally|throw|typeof|instanceof|in|of|this|super|null|undefined|true|false|void|delete|static|get|set',
+      ts: 'const|let|var|function|return|if|else|for|while|do|switch|case|default|break|continue|new|class|extends|implements|interface|type|enum|namespace|declare|public|private|protected|readonly|import|export|from|as|async|await|yield|try|catch|finally|throw|typeof|keyof|infer|is|in|of|this|super|null|undefined|true|false|void|delete|static|get|set|satisfies',
+      py: 'def|return|if|elif|else|for|while|break|continue|pass|import|from|as|class|try|except|finally|raise|with|lambda|yield|global|nonlocal|assert|del|in|is|not|and|or|None|True|False|async|await|self',
+      go: 'package|import|func|return|if|else|for|range|switch|case|default|break|continue|go|defer|chan|select|type|struct|interface|map|var|const|nil|true|false|make|new|len|cap|append|panic|recover',
+      rust: 'fn|let|mut|const|static|return|if|else|match|for|while|loop|break|continue|struct|enum|impl|trait|use|mod|pub|crate|self|Self|super|as|where|move|ref|async|await|dyn|unsafe|true|false|Some|None|Ok|Err',
+      java: 'public|private|protected|class|interface|enum|extends|implements|static|final|void|int|long|double|float|boolean|char|byte|short|return|if|else|for|while|do|switch|case|default|break|continue|new|this|super|try|catch|finally|throw|throws|null|true|false|import|package|abstract|synchronized|volatile|transient|instanceof',
+      bash: 'if|then|else|elif|fi|for|in|do|done|while|case|esac|function|return|export|local|readonly|source|echo|cd|ls|cat|grep|sed|awk|curl|git|npm|pnpm|node|python|pip|docker|sudo|chmod|mkdir|rm|cp|mv|touch|set|unset|exit|true|false',
+    }
+    const HL_ALIAS = { javascript: 'js', jsx: 'js', mjs: 'js', cjs: 'js', typescript: 'ts', tsx: 'ts', python: 'py', python3: 'py', golang: 'go', rs: 'rust', shell: 'bash', sh: 'bash', zsh: 'bash', console: 'bash', json: 'js', yml: 'yaml' }
+    const HL_COMMON = 'if|else|for|while|return|function|class|def|func|import|export|from|new|const|let|var|in|of|not|and|or'
+
+    // Languages whose line comment is '#'; everything else uses '//' so a
+    // '#' inside JS/CSS (a hex colour, a private field) is not swallowed.
+    const HL_HASH_COMMENT = { py: 1, bash: 1, yaml: 1, ruby: 1, perl: 1, r: 1 }
+
+    function hlTokens(code, lang) {
+      const key = HL_ALIAS[lang] || lang
+      const kw = new Set(((HL_KEYWORDS[key] || HL_COMMON).split('|')))
+      const commentPat = HL_HASH_COMMENT[key] ? '#[^\\n]*' : '\\/\\/[^\\n]*'
+      // Bracket construction, not a literal: keeps quotes and backslashes readable.
+      const SQ = String.fromCharCode(39)
+      const Q = String.fromCharCode(34)
+      const BT = String.fromCharCode(96)
+      const re = new RegExp('(' + commentPat + '|\\/\\*[\\s\\S]*?\\*\\/)' +
+        '|(' + SQ + '[^' + SQ + '\\\\]*(?:\\\\.[^' + SQ + '\\\\]*)*' + SQ +
+        '|' + Q + '[^' + Q + '\\\\]*(?:\\\\.[^' + Q + '\\\\]*)*' + Q +
+        '|' + BT + '[^' + BT + '\\\\]*(?:\\\\.[^' + BT + '\\\\]*)*' + BT + ')' +
+        '|\\b(0x[0-9a-fA-F]+|\\d+(?:\\.\\d+)?)\\b' +
+        '|([A-Za-z_$0-9][\\w$]*)' +
+        '|(\\s+)' +
+        '|([^\\s\\w$])' +
+        '|([\\s\\S])', 'g')
+      const out = []
+      let m
+      while ((m = re.exec(code)) !== null) {
+        const [tok, comment, str, num, ident, space, punct, any] = m
+        if (comment !== undefined) out.push({ t: 'com', v: tok })
+        else if (str !== undefined) out.push({ t: 'str', v: tok })
+        else if (num !== undefined) out.push({ t: 'num', v: tok })
+        else if (ident !== undefined) {
+          const after = code.slice(re.lastIndex).match(/^\s*\(/)
+          out.push({ t: kw.has(ident) ? 'kw' : /^[A-Z]/.test(ident) ? 'type' : after ? 'fn' : 'txt', v: ident })
+        } else if (space !== undefined || any !== undefined) out.push({ t: 'txt', v: tok })
+        else out.push({ t: 'pun', v: tok })
+      }
+      return out
+    }
+
+    function highlight(code, lang) {
+      let i = 0
+      return hlTokens(code, String(lang || '').trim().toLowerCase()).map((tk) => {
+        if (tk.t === 'txt') return tk.v
+        return h('span', { key: 't' + (i++), className: 'ddc-tok-' + tk.t }, tk.v)
+      })
+    }
+
+    // Code block with a language label and a one-click copy button.
+    function CodeBlock(props) {
+      const [copied, setCopied] = React.useState(false)
+      const code = String(props.code ?? '')
+      const lang = String(props.lang ?? '').trim()
+      const onCopy = () => {
+        const done = () => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(done).catch(() => fallbackCopy(code, done))
+        } else {
+          fallbackCopy(code, done)
+        }
+      }
+      return h('div', { className: 'ddc-codeblock' },
+        h('div', { className: 'ddc-codehead' },
+          h('span', { className: 'ddc-codelang' }, lang || 'text'),
+          h('button', {
+            className: 'ddc-copy',
+            type: 'button',
+            'data-copied': copied ? 'true' : undefined,
+            title: 'Copy',
+            onClick: onCopy,
+          }, copied ? '✓' : '⧉')),
+        h('pre', { className: 'ddc-codepre' }, h('code', { className: 'ddc-code-' + ((HL_ALIAS[lang.toLowerCase()] || lang.toLowerCase()).replace(/[^a-z0-9-]/g, '') || 'text') }, highlight(code, lang))))
+    }
+
     function renderInline(text, keyBase) {
       const nodes = []
       let i = 0
@@ -117,11 +222,85 @@ window.__ModuleLoader__.load({
       return nodes
     }
 
-    function renderMarkdown(source) {
+    /** Split a pipe-table row into trimmed cells, honouring "\|" escapes. */
+    function splitCells(row) {
+      let s = String(row).trim()
+      if (s.startsWith('|')) s = s.slice(1)
+      if (s.endsWith('|')) s = s.slice(0, -1)
+      const cells = []
+      let cur = ''
+      for (let p = 0; p < s.length; p++) {
+        const ch = s[p]
+        if (ch === '\\' && s[p + 1] === '|') { cur += '|'; p++; continue }
+        if (ch === '|') { cells.push(cur); cur = ''; continue }
+        cur += ch
+      }
+      cells.push(cur)
+      return cells.map((c) => c.trim())
+    }
+
+    /** True for a GFM table delimiter row, e.g. `| --- | :--: |`. */
+    function isDelimRow(line) {
+      if (typeof line !== 'string' || !line.includes('-')) return false
+      const cells = splitCells(line)
+      return cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c))
+    }
+
+    function isTableStart(lines, i) {
+      if (i + 1 >= lines.length || !String(lines[i]).includes('|') || !isDelimRow(lines[i + 1])) return false
+      // GFM requires the header and delimiter rows to have the same column count.
+      return splitCells(lines[i]).length === splitCells(lines[i + 1]).length
+    }
+
+    function renderMarkdown(source, opts) {
+      opts = opts || {}
       const lines = String(source ?? '').split('\n')
       const blocks = []
-      let i = 0
       let key = 0
+      const nk = () => 'k' + (key++)
+
+      const isBlockStart = (i) => {
+        const l = lines[i]
+        return /^```/.test(l) || /^<details>/.test(l) || /^#{1,6}\s/.test(l) ||
+          /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(l) || /^\s*[-*]\s+/.test(l) ||
+          /^\s*\d+[.)]\s+/.test(l) || /^\s*>\s?/.test(l) || isTableStart(lines, i)
+      }
+
+      // Recursive list parser: nesting depth, ordered/unordered, type changes.
+      const parseList = (start, baseIndent) => {
+        const ordered = /^\s*\d/.test(lines[start])
+        const items = []
+        let k = start
+        while (k < lines.length) {
+          const l = lines[k]
+          const m = /^(\s*)[-*]\s+(.*)$/.exec(l) || /^(\s*)\d+[.)]\s+(.*)$/.exec(l)
+          if (m === null) {
+            // A blank line is kept only when another list line follows.
+            if (l.trim() === '' && k + 1 < lines.length &&
+              (/^\s*[-*]\s+/.test(lines[k + 1]) || /^\s*\d+[.)]\s+/.test(lines[k + 1]))) { k++; continue }
+            break
+          }
+          const indent = m[1].replace(/\t/g, '    ').length
+          const isOrdered = /^\s*\d/.test(l)
+          if (indent < baseIndent) break
+          if (indent === baseIndent && isOrdered !== ordered) break
+          if (indent > baseIndent) {
+            if (items.length === 0) break
+            const sub = parseList(k, indent)
+            if (sub === null) break
+            items[items.length - 1].children.push(sub.node)
+            k = sub.next
+            continue
+          }
+          items.push({ text: m[2], children: [] })
+          k++
+        }
+        const node = h(ordered ? 'ol' : 'ul', { key: nk() },
+          items.map((it) => h('li', { key: nk() }, renderInline(it.text, 'il' + (key++)).concat(it.children))))
+        return { node, next: k }
+      }
+
+      let i = 0
       while (i < lines.length) {
         const line = lines[i]
         // fenced code
@@ -132,54 +311,86 @@ window.__ModuleLoader__.load({
           i++
           while (i < lines.length && !/^```\s*$/.test(lines[i])) { codeLines.push(lines[i]); i++ }
           i++ // closing fence
-          blocks.push(h('pre', { key: 'pre' + (key++), className: 'ddc-code' }, h('code', null, codeLines.join('\n'))))
+          blocks.push(h(CodeBlock, { key: nk(), code: codeLines.join('\n'), lang }))
           continue
         }
-        // <details> ... </details> block (R1 thinking)
+        // <details> ... </details> block (R1 reasoning trace). Collapsed by
+        // default; the first line of the inner content is usually the
+        // "思考过程" heading which we lift into the summary label instead.
         if (/^<details>/.test(line)) {
           const inner = []
           i++
           while (i < lines.length && !/<\/details>/.test(lines[i])) { inner.push(lines[i]); i++ }
           i++
-          blocks.push(h('details', { key: 'det' + (key++), className: 'ddc-think' },
-            h('summary', null, '思考过程'),
-            h('div', { className: 'ddc-think-body' }, renderMarkdown(inner.join('\n')))))
+          // Drop a leading "思考过程" / "Thinking" title line (also when separated
+          // from the body by blank lines) — it becomes the summary label instead.
+          let s = 0
+          while (s < inner.length && inner[s].trim() === '') s++
+          const titleRe = /^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:思考过程|思考|Thinking(?: process)?)\s*(?:\*\*)?\s*$/i
+          if (s < inner.length && titleRe.test(inner[s])) inner.splice(0, s + 1)
+          blocks.push(h('details', { key: nk(), className: 'ddc-think' },
+            h('summary', { className: 'ddc-think-summary' },
+              h('span', { className: 'ddc-think-ico' }, '✧'),
+              h('span', null, opts.thinkLabel || '思考过程')),
+            h('div', { className: 'ddc-think-body' }, renderMarkdown(inner.join('\n'), opts))))
           continue
         }
         const heading = /^(#{1,6})\s+(.*)$/.exec(line)
         if (heading) {
           const level = heading[1].length
-          blocks.push(h('h' + Math.min(level + 2, 6), { key: 'h' + (key++) }, renderInline(heading[2], 'h' + key)))
+          blocks.push(h('h' + Math.min(level + 2, 6), { key: nk() }, renderInline(heading[2], 'h' + (key++))))
           i++
           continue
         }
-        // unordered list
-        if (/^\s*[-*]\s+/.test(line)) {
-          const items = []
-          while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-            items.push(h('li', { key: 'li' + (key++) }, renderInline(lines[i].replace(/^\s*[-*]\s+/, ''), 'li' + key)))
+        // thematic break
+        if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+          blocks.push(h('hr', { key: nk() }))
+          i++
+          continue
+        }
+        // table (needs a header row followed by a delimiter row)
+        if (isTableStart(lines, i)) {
+          const headers = splitCells(lines[i])
+          const aligns = splitCells(lines[i + 1]).map((c) => {
+            const left = c.startsWith(':')
+            const right = c.endsWith(':')
+            return left && right ? 'center' : right ? 'right' : left ? 'left' : ''
+          })
+          i += 2
+          const rows = []
+          while (i < lines.length && lines[i].trim() !== '' && lines[i].includes('|')) {
+            rows.push(splitCells(lines[i]))
             i++
           }
-          blocks.push(h('ul', { key: 'ul' + (key++) }, items))
+          const cell = (tag, text, col) => h(tag, { key: nk(), style: aligns[col] ? { textAlign: aligns[col] } : undefined },
+            renderInline(text ?? '', 'tc' + (key++)))
+          blocks.push(h('div', { key: nk(), className: 'ddc-tablewrap' },
+            h('table', { className: 'ddc-table' },
+              h('thead', null, h('tr', null, headers.map((c, col) => cell('th', c, col)))),
+              h('tbody', null, rows.map((r) => h('tr', { key: nk() },
+                headers.map((_, col) => cell('td', r[col] ?? '', col))))))))
+          continue
+        }
+        // unordered or ordered list (recursive, supports nesting)
+        if (/^\s*[-*]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
+          const res = parseList(i, (line.match(/^\s*/) ?? [''])[0].replace(/\t/g, '    ').length)
+          blocks.push(res.node)
+          i = res.next
           continue
         }
         // blockquote
         if (/^\s*>\s?/.test(line)) {
           const inner = []
           while (i < lines.length && /^\s*>\s?/.test(lines[i])) { inner.push(lines[i].replace(/^\s*>\s?/, '')); i++ }
-          blocks.push(h('blockquote', { key: 'bq' + (key++) }, renderMarkdown(inner.join('\n'))))
+          blocks.push(h('blockquote', { key: nk() }, renderMarkdown(inner.join('\n'))))
           continue
         }
         // blank
         if (line.trim() === '') { i++; continue }
         // paragraph: gather until blank or a structural line
         const para = []
-        while (i < lines.length && lines[i].trim() !== '' &&
-          !/^```/.test(lines[i]) && !/^#{1,6}\s/.test(lines[i]) &&
-          !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*>\s?/.test(lines[i]) && !/^<details>/.test(lines[i])) {
-          para.push(lines[i]); i++
-        }
-        blocks.push(h('p', { key: 'p' + (key++) }, renderInline(para.join(' '), 'p' + key)))
+        while (i < lines.length && lines[i].trim() !== '' && !isBlockStart(i)) { para.push(lines[i]); i++ }
+        blocks.push(h('p', { key: nk() }, renderInline(para.join(' '), 'p' + (key++))))
       }
       return blocks
     }
@@ -406,13 +617,20 @@ window.__ModuleLoader__.load({
                     h('h3', { className: 'ddc-empty-title' }, tt('panel.emptyTitle')),
                     h('p', { className: 'ddc-empty-body' }, tt('panel.emptyBody')),
                     loggedIn !== true ? h('button', { className: 'ddc-btn ddc-btn-primary', onClick: () => void openLogin() }, tt('panel.openLogin')) : null)
-                : viewChat.messages.map((msg) => h('div', { key: msg.id, className: 'ddc-msgrow', 'data-role': msg.role },
-                    h('div', { className: 'ddc-msgmeta' },
-                      h('span', { className: 'ddc-speaker' }, msg.role === 'user' ? tt('panel.roleYou') : 'DeepSeek'),
-                      msg.streaming === true ? h('span', { className: 'ddc-badge' }, tt('panel.streaming') + '…') : null),
-                    h('div', { className: 'ddc-bubble' },
-                      msg.role === 'user' ? h('div', { className: 'ddc-usertext' }, msg.content) : renderMarkdown(msg.content),
-                      msg.error ? h('div', { className: 'ddc-msgerror' }, msg.error) : null))),
+                : viewChat.messages.map((msg) => h('div', { key: msg.id, className: 'ddc-msgrow', 'data-role': msg.role, 'data-streaming': msg.streaming === true ? 'true' : undefined },
+                    msg.role === 'user'
+                      ? h('div', { className: 'ddc-msgbody' },
+                          h('div', { className: 'ddc-msgmeta' },
+                            h('span', { className: 'ddc-speaker' }, tt('panel.roleYou'))),
+                          h('div', { className: 'ddc-bubble' }, h('div', { className: 'ddc-usertext' }, msg.content)))
+                      : h('div', { className: 'ddc-msgbody' },
+                          h('div', { className: 'ddc-avatar', title: 'DeepSeek' }, h(SidebarIcon, { size: 15 })),
+                          h('div', { className: 'ddc-msgcontent' },
+                            h('div', { className: 'ddc-msgmeta' },
+                              h('span', { className: 'ddc-speaker' }, 'DeepSeek'),
+                              msg.streaming === true ? h('span', { className: 'ddc-badge' }, tt('panel.streaming') + '…') : null),
+                            h('div', { className: 'ddc-answer' }, renderMarkdown(msg.content, { thinkLabel: tt('panel.thinking') })),
+                            msg.error ? h('div', { className: 'ddc-msgerror' }, msg.error) : null)))),
             ),
             h('div', { className: 'ddc-composer' },
               h('div', { className: 'ddc-toolbar' },
@@ -468,15 +686,15 @@ window.__ModuleLoader__.load({
       .ddc-dot[data-state="ok"] { background: var(--dsw-alias-state-success-primary); }
       .ddc-dot[data-state="warn"] { background: var(--dsw-alias-state-warn-primary); }
       .ddc-dot[data-state="bad"] { background: var(--dsw-alias-state-error-primary); }
-      .ddc-dot[data-state="busy"] { background: var(--dsw-alias-brand-primary); }
+      .ddc-dot[data-state="busy"] { background: var(--dsw-alias-link); }
       .ddc-dot[data-state="idle"] { background: var(--dsw-alias-state-idle-primary); }
       .ddc-btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
         border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1);
         color: var(--dsw-alias-label-primary); }
       .ddc-btn:hover:not(:disabled) { background: var(--dsw-alias-bg-layer-2); }
       .ddc-btn:disabled { opacity: 0.5; cursor: default; }
-      .ddc-btn-primary { background: var(--dsw-alias-brand-primary); border-color: transparent; color: #fff; }
-      .ddc-btn-primary:hover:not(:disabled) { filter: brightness(1.06); background: var(--dsw-alias-brand-primary); }
+      .ddc-btn-primary { background: var(--dsw-alias-button-primary-fill); border-color: transparent; color: var(--dsw-alias-label-primary-foreground); }
+      .ddc-btn-primary:hover:not(:disabled) { filter: brightness(1.06); background: var(--dsw-alias-button-primary-hover); }
       .ddc-btn-ghost { background: transparent; border-color: transparent; color: var(--dsw-alias-label-secondary); }
       .ddc-btn-danger { background: var(--dsw-alias-state-error-primary); border-color: transparent; color: #fff; }
       .ddc-body { display: flex; flex: 1; min-height: 0; }
@@ -494,7 +712,8 @@ window.__ModuleLoader__.load({
       .ddc-recoveritem .ddc-chattitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .ddc-recoverbadge { flex: none; font-size: 10px; padding: 1px 6px; border-radius: 10px; white-space: nowrap;
         color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); }
-      .ddc-recoveritem[data-imported="true"] .ddc-recoverbadge { color: #fff; background: var(--dsw-alias-brand-primary); }
+      .ddc-recoveritem[data-imported="true"] .ddc-recoverbadge { color: var(--dsw-alias-label-primary-foreground);
+        background: var(--dsw-alias-button-primary-fill); }
       .ddc-empty-side { color: var(--dsw-alias-label-secondary); font-size: 12px; padding: 8px; }
       .ddc-chatrow { text-align: left; border: none; background: transparent; cursor: pointer;
         padding: 7px 8px; border-radius: 8px; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px;
@@ -507,37 +726,109 @@ window.__ModuleLoader__.load({
       .ddc-empty { margin: auto; text-align: center; max-width: 420px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
       .ddc-empty-title { font-size: 18px; margin: 0; }
       .ddc-empty-body { color: var(--dsw-alias-label-secondary); font-size: 13px; margin: 0; }
-      .ddc-msgrow { display: flex; flex-direction: column; gap: 6px; }
+      .ddc-msgrow { display: flex; flex-direction: column; }
       .ddc-msgrow[data-role="user"] { align-items: flex-end; }
+      .ddc-msgbody { display: flex; gap: 10px; width: 100%; min-width: 0; }
+      .ddc-msgrow[data-role="user"] .ddc-msgbody { flex-direction: column; align-items: flex-end; width: auto; max-width: 82%; }
+      .ddc-msgrow[data-role="assistant"] .ddc-msgbody { align-items: flex-start; }
+      .ddc-avatar { flex: none; width: 26px; height: 26px; border-radius: 50%; margin-top: 1px;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-link); }
+      .ddc-msgcontent { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
       .ddc-msgmeta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--dsw-alias-label-secondary); }
       .ddc-speaker { font-weight: 600; }
       .ddc-badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: var(--dsw-alias-bg-layer-2); }
-      .ddc-bubble { max-width: 100%; line-height: 1.6; font-size: 14px; word-break: break-word; }
-      .ddc-msgrow[data-role="user"] .ddc-bubble { background: var(--dsw-alias-brand-primary); color: #fff;
-        padding: 8px 12px; border-radius: 12px; max-width: 80%; }
+      .ddc-answer { line-height: 1.68; font-size: 14px; word-break: break-word; color: var(--dsw-alias-label-primary);
+        background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+        border-radius: 12px; padding: 12px 15px; }
+      .ddc-bubble { line-height: 1.6; font-size: 14px; word-break: break-word; }
+      /* User turn: the host's own bubble surface, with primary text — never a
+         brand fill (that token is an inverted neutral and goes near-black). */
+      .ddc-msgrow[data-role="user"] .ddc-bubble { background: var(--dsw-specific-bubble);
+        color: var(--dsw-alias-label-primary); padding: 9px 14px; border-radius: 14px; }
       .ddc-usertext { white-space: pre-wrap; }
-      .ddc-bubble p { margin: 0 0 8px; }
-      .ddc-bubble p:last-child { margin-bottom: 0; }
-      .ddc-bubble pre { background: var(--dsw-alias-bg-layer-2); padding: 10px 12px; border-radius: 8px;
-        overflow-x: auto; font-size: 12.5px; margin: 8px 0; }
-      .ddc-bubble code { background: var(--dsw-alias-bg-layer-2); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
-      .ddc-bubble pre code { background: transparent; padding: 0; }
-      .ddc-bubble a { color: var(--dsw-alias-brand-primary); }
-      .ddc-think { margin: 6px 0; font-size: 13px; color: var(--dsw-alias-label-secondary); }
-      .ddc-think-body { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 10px; margin-top: 6px; }
+      .ddc-answer > *:first-child { margin-top: 0; }
+      .ddc-answer > *:last-child { margin-bottom: 0; }
+      .ddc-answer p, .ddc-bubble p { margin: 0 0 10px; }
+      .ddc-answer p:last-child, .ddc-bubble p:last-child { margin-bottom: 0; }
+      .ddc-answer ul, .ddc-answer ol { margin: 0 0 10px; padding-left: 22px; }
+      .ddc-answer li { margin: 2px 0; }
+      .ddc-answer li > ul, .ddc-answer li > ol { margin: 2px 0; padding-left: 20px; }
+      .ddc-answer h3, .ddc-answer h4, .ddc-answer h5, .ddc-answer h6 { margin: 14px 0 8px; line-height: 1.35; }
+      .ddc-answer blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--dsw-alias-border-l2);
+        color: var(--dsw-alias-label-secondary); }
+      .ddc-answer hr { border: none; border-top: 1px solid var(--dsw-alias-border-l1); margin: 14px 0; }
+      /* GFM table */
+      .ddc-tablewrap { margin: 10px 0; overflow-x: auto; border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; }
+      .ddc-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      .ddc-table th, .ddc-table td { padding: 7px 11px; text-align: left; border-bottom: 1px solid var(--dsw-alias-border-l1);
+        vertical-align: top; }
+      .ddc-table th { background: var(--dsw-alias-bg-layer-2); font-weight: 600; color: var(--dsw-alias-label-primary);
+        white-space: nowrap; }
+      .ddc-table tbody tr:last-child td { border-bottom: none; }
+      .ddc-table tbody tr:hover { background: var(--dsw-alias-bg-layer-2); }
+      .ddc-answer code { background: var(--dsw-alias-bg-layer-2);
+        background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
+        padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+      .ddc-answer a { color: var(--dsw-alias-link); text-decoration: none; }
+      .ddc-answer a:hover { text-decoration: underline; }
+      /* code block with language label + copy */
+      .ddc-codeblock { margin: 10px 0; border-radius: 10px; overflow: hidden;
+        border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-markdown-code-block); }
+      .ddc-codehead { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 4px 8px 4px 12px; font-size: 11px; color: var(--dsw-alias-label-secondary);
+        background: var(--dsw-alias-markdown-code-block-banner); border-bottom: 1px solid var(--dsw-alias-border-l1); }
+      .ddc-codelang { text-transform: lowercase; letter-spacing: 0.2px; }
+      .ddc-copy { border: none; background: transparent; color: var(--dsw-alias-label-secondary);
+        cursor: pointer; font: inherit; font-size: 12px; line-height: 1; padding: 3px 6px; border-radius: 6px; }
+      .ddc-copy:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+      .ddc-copy[data-copied="true"] { color: var(--dsw-alias-state-success-primary); }
+      .ddc-codepre { margin: 0; padding: 11px 13px; overflow-x: auto; font-size: 12.5px; line-height: 1.55;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+      .ddc-codepre code { background: transparent; padding: 0; border-radius: 0; font-family: inherit; }
+      /* syntax tokens — light palette (default), then overridden for dark mode */
+      .ddc-tok-kw { color: #a626a4; }
+      .ddc-tok-str { color: #2f7d32; }
+      .ddc-tok-num { color: #b76b01; }
+      .ddc-tok-com { color: #8a9199; font-style: italic; }
+      .ddc-tok-fn { color: #2a63c9; }
+      .ddc-tok-type { color: #0e7490; }
+      .ddc-tok-pun { color: #6b7280; }
+      body[data-ds-dark-theme] .ddc-tok-kw { color: #c678dd; }
+      body[data-ds-dark-theme] .ddc-tok-str { color: #98c379; }
+      body[data-ds-dark-theme] .ddc-tok-num { color: #d19a66; }
+      body[data-ds-dark-theme] .ddc-tok-com { color: #7f848e; }
+      body[data-ds-dark-theme] .ddc-tok-fn { color: #61afef; }
+      body[data-ds-dark-theme] .ddc-tok-type { color: #56b6c2; }
+      body[data-ds-dark-theme] .ddc-tok-pun { color: #9aa0a6; }
+      /* reasoning trace, collapsed by default */
+      .ddc-think { margin: 0; font-size: 12.5px; }
+      .ddc-think-summary { display: inline-flex; align-items: center; gap: 6px; width: fit-content;
+        cursor: pointer; list-style: none; padding: 3px 10px; border-radius: 12px;
+        background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); font-size: 12px; }
+      .ddc-think-summary::-webkit-details-marker { display: none; }
+      .ddc-think-summary:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+      .ddc-think-ico { color: var(--dsw-alias-link); }
+      .ddc-think-body { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 11px; margin-top: 8px;
+        color: var(--dsw-alias-label-secondary); }
+      .ddc-think-body p { margin: 0 0 8px; }
       .ddc-msgerror { color: var(--dsw-alias-state-error-primary); font-size: 12px; margin-top: 4px; }
+      .ddc-msgrow[data-streaming="true"] .ddc-answer::after { content: '▍'; margin-left: 2px;
+        color: var(--dsw-alias-link); animation: ddc-blink 1s steps(2, start) infinite; }
+      @keyframes ddc-blink { 50% { opacity: 0; } }
       .ddc-composer { flex: none; border-top: 1px solid var(--dsw-alias-border-l1); padding: 10px 16px 14px;
         display: flex; flex-direction: column; gap: 8px; }
       .ddc-toolbar { display: flex; gap: 8px; }
       .ddc-toggle { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 14px; cursor: pointer;
         border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-secondary); }
-      .ddc-toggle[data-active="true"] { background: var(--dsw-alias-brand-primary); color: #fff; border-color: transparent; }
+      .ddc-toggle[data-active="true"] { background: var(--dsw-alias-button-primary-fill);
+        color: var(--dsw-alias-label-primary-foreground); border-color: transparent; }
       .ddc-toggle:disabled { opacity: 0.5; cursor: default; }
       .ddc-input { width: 100%; box-sizing: border-box; resize: none; min-height: 64px; max-height: 200px;
         font: inherit; font-size: 14px; padding: 10px 12px; border-radius: 10px;
         border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1);
         color: var(--dsw-alias-label-primary); }
-      .ddc-input:focus { outline: none; border-color: var(--dsw-alias-brand-primary); }
+      .ddc-input:focus { outline: none; border-color: var(--dsw-alias-link); }
       .ddc-footer { display: flex; align-items: center; gap: 10px; }
       .ddc-hint { font-size: 11px; color: var(--dsw-alias-label-secondary); }
       .ddc-toast { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
