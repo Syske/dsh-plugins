@@ -7,7 +7,7 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add @syske/dsh-ui-zoom
+dsh plugin --profile web add @syske.range/dsh-ui-zoom
 ```
 
 或从源码安装（未发布 npm 版本、或需锁定某次提交时）：

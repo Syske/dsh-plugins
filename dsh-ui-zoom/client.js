@@ -16,7 +16,7 @@
  *  - The preference is remembered in localStorage and restored on load.
  */
 window.__ModuleLoader__.load({
-  id: '@syske/dsh-ui-zoom',
+  id: '@syske.range/dsh-ui-zoom',
   factory(require) {
     const React = require('react')
     const h = React.createElement

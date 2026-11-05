@@ -7,7 +7,7 @@ The built-in font-size setting only scales content text. This plugin scales the 
 ## Install
 
 ```bash
-dsh plugin --profile web add @syske/dsh-ui-zoom
+dsh plugin --profile web add @syske.range/dsh-ui-zoom
 ```
 
 Install from source instead (no npm release, or to pin a commit):

@@ -1,6 +1,6 @@
 {
-  "name": "@syske/dsh-ui-zoom",
-  "version": "0.2.0",
+  "name": "@syske.range/dsh-ui-zoom",
+  "version": "0.2.2",
   "description": "Whole-interface zoom for the DeepSeek Harness Web GUI: scale the entire UI (not just text) from Settings, with keyboard shortcuts and a remembered preference.",
   "type": "module",
   "license": "Apache-2.0",
