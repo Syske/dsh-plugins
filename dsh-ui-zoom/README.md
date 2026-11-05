@@ -7,12 +7,22 @@ The built-in font-size setting only scales content text. This plugin scales the 
 ## Install
 
 ```bash
+dsh plugin --profile web add @syske/dsh-ui-zoom
+```
+
+Install from source instead (no npm release, or to pin a commit):
+
+```bash
 dsh plugin --profile web add github:Syske/dsh-ui-zoom
 ```
 
 Or, inside a session, use `plugin_manager` with `install_bundle` and this repository directory as the target.
 
 Reload the Web page once after installing so the new Client module is picked up.
+
+> Not to be confused with the unrelated npm package `dsh-ui-zoom` (maintained by
+> another author, `sjrslh/dsh-ui-zoom`). This plugin is published as
+> `@syske/dsh-ui-zoom`.
 
 ## Features
 

@@ -7,12 +7,20 @@
 ## 安装
 
 ```bash
+dsh plugin --profile web add @syske/dsh-ui-zoom
+```
+
+或从源码安装（未发布 npm 版本、或需锁定某次提交时）：
+
+```bash
 dsh plugin --profile web add github:Syske/dsh-ui-zoom
 ```
 
 或在会话中使用 `plugin_manager` 的 `install_bundle`，目标为本仓库目录。
 
 安装后**刷新一次** Web 页面，以加载新的 Client 模块。
+
+> 注意与 npm 上另一个同名包 `dsh-ui-zoom`（由他人维护，仓库为 `sjrslh/dsh-ui-zoom`）区分：本插件发布名为 `@syske/dsh-ui-zoom`。
 
 ## 功能
 
