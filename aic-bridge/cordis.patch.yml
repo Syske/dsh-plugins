@@ -1,4 +1,4 @@
-# aic-bridge bundle patch — S0 skeleton + S1 adapters.
+# aic-bridge bundle patch — S0 skeleton + S1 adapters + S3.1-B durable dispatch (Storage Domain TaskRecord).
 #
 # Only insert the aic-bridge row. Do NOT re-insert `storage` or
 # `session-projection-cache` here: dsh-web-app already mounts them, and a

@@ -6,9 +6,10 @@ AIC × DSH 融合项目 —— **A1 插件（S0 骨架 + S1 适配层 + S3.0 最
 的最小实现：A1 Worker 使用**独立顶层 Agent Session**（与 Manager 主 Session 分离，见 ADR-006），
 AIC Adapter **只读**，审批 **fail-closed**。**不 Fork、不修改 DSH Core。**
 
-> 状态（S3.0）：
+> 状态（S3.0 + S3.1-B）：
 > - **已实现**：插件骨架与适配层（S0/S1）；**最小 Manager 命令入口** `/aic-status`、`/aic <task>`（经 `ctx.commands` 注册）；Manager **显式、fail-closed** 的模型路由（`manager.provider`/`manager.model`，create 与 resume 一致）；命令状态**诚实判定**（需本次 turn 非空 `assistant/message` 且 flush 成功）。
-> - **未实现**（明确 TODO/占位，不宣称能力）：S3.1 持久幂等/关联记录（`IdempotencyStore` 仅内存 Map）、AIC Evaluator/evidence（`getEvaluation` 抛 `not implemented`）、Control Tower、富 Browser UI（当前以命令入口替代）。
+> - **已实现（S3.1-B）**：经 `ctx.storageDomain`（dsh-storage / storage-json / storage-domain）的**持久 TaskRecord**（写前 schema 校验）；**幂等派发**（`taskId` + `payloadHash` 冲突检测）与 **intent-before-send**；Worker 关联（确定性 `workerSessionId`）；崩溃/歧义 **unknown fail-closed、不自动重发**。`completed` 不可达（AIC Evaluator 未实现）。
+> - **未实现**（明确占位，不宣称能力）：AIC Evaluator/evidence（`getEvaluation` 抛 `not implemented`）、Control Tower、富 Browser UI（当前以命令入口替代）。
 > - **未验证**：真实 Web UI 触发（需装入日常 Web Profile 且具备 GUI 控制能力，当前不具备）、真实 Provider/Worker 闭环、生产环境生命周期时序。
 
 ## 目录
@@ -29,7 +30,7 @@ aic-bridge/
 │   │   └── manager-session.js     # Manager canonical Session：稳定身份 create/resume + 模型路由
 │   └── aic/
 │       ├── read-adapter.js        # AIC 只读 Adapter（接口占位，无网络；getEvaluation 未实现）
-│       └── idempotency-store.js   # 幂等/关联记录占位（S3.1 需 flush 屏障）
+│       └── idempotency-store.js   # 持久 TaskRecord + 幂等/关联（Storage Domain 落点，写前校验）
 └── test/                          # node:test 纯逻辑/契约单测
 ```
 
@@ -97,7 +98,7 @@ node --test
 2. 真实 Provider/Worker 端到端闭环（本阶段仅 Mock）。
 3. JSONL backend 实际配置与崩溃恢复时序在生产环境的验证。
 4. Approval UI 交互（无应答者 fail-closed 已源码确认）。
-5. S3.1 持久化幂等/关联（必须经 `flush` 屏障）。
+5. S3.1 持久幂等/关联已落地（Storage Domain）；跨进程并发锁/多写者未验证（单写者部署假设）。
 6. AIC 实际只读接口（未核实，无网络代码；`getEvaluation` 未实现）。
 7. Bridge 旧版本（0.1.7-rc.2 / 0.2.0-rc.2）与本机 0.2.1-rc.5 兼容性。
 

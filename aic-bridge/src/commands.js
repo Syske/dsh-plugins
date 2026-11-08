@@ -21,6 +21,7 @@
 import { ManagerSessionManager } from './manager/manager-session.js';
 import { SessionPersistenceAdapter } from './adapters/session-persistence.js';
 import { validateManagerRoute } from './config.js';
+import { payloadHash } from './aic/idempotency-store.js';
 
 /** Concatenated non-empty text of an assistant/message event, or ''. */
 function assistantText(event) {
@@ -59,6 +60,10 @@ export function installCommands(ctx, config = {}, deps = {}) {
   const worker = deps.worker ?? manager.worker;
   const persistence = deps.persistence ?? new SessionPersistenceAdapter(ctx);
   const route = validateManagerRoute(config?.manager);
+  // S3.1-B: use the durable, idempotent dispatchTask ONLY when a TaskStore is
+  // actually injected (index.js calls setTaskStore). Without it we fall back to
+  // the S3.0 legacy send path, keeping existing behavior/tests intact.
+  const useDispatch = typeof manager?.dispatchTask === 'function' && !!manager?.taskStore;
 
   /** Read all persisted events for a session (flush barrier first). */
   const readSession = deps.readSession ?? (async (sid) => {
@@ -112,7 +117,7 @@ export function installCommands(ctx, config = {}, deps = {}) {
         const status = stats.replies > 0 ? 'ready' : 'cold (no replies yet)';
         return {
           kind: 'success',
-          text: `AIC Manager: ${r.mode} status=${status} session=${r.sessionId} agent=${r.handle.agentId} ` +
+          text: `AIC Manager: ${r.mode} status=${status} mode=${useDispatch ? 'durable' : 'legacy'} session=${r.sessionId} agent=${r.handle.agentId} ` +
             `route=${route.provider}/${route.model} events=${stats.eventCount} tasks=${stats.tasks} replies=${stats.replies}` +
             (stats.lastReply ? ` lastReply=${stats.lastReply}` : ''),
         };
@@ -130,6 +135,22 @@ export function installCommands(ctx, config = {}, deps = {}) {
       if (!text) return { kind: 'error', text: 'usage: /aic <task text>' };
       if (!route.ok) {
         return { kind: 'error', text: `blocked: ${route.reason}. Configure manager.provider and manager.model before sending.` };
+      }
+      // Durable path: content-derived taskId makes repeated identical /aic idempotent.
+      if (useDispatch) {
+        const taskId = 'cmd-' + payloadHash(text);
+        try {
+          const res = await manager.dispatchTask({ taskId, text });
+          const ok = res.status === 'worker_done';
+          const detail = `task=${taskId} state=${res.state} worker=${res.workerSessionId ?? '?'}` +
+            (res.accepted !== undefined ? ` accepted=${res.accepted} executed=${res.executed} persisted=${res.persisted} replied=${res.workerReplied}` : '') +
+            (res.note ? ` note="${res.note}"` : '') + (res.error ? ` error="${res.error}"` : '');
+          return ok
+            ? { kind: 'success', text: `AIC Manager ${res.managerSessionId}: durable ${detail}` }
+            : { kind: 'error', text: `AIC Manager ${res.managerSessionId}: ${res.status} ${detail}` };
+        } catch (e) {
+          return { kind: 'error', text: `aic dispatch failed: ${e?.message ?? e}` };
+        }
       }
       try {
         const r = await ensureManager();

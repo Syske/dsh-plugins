@@ -22,14 +22,14 @@ import { SessionPersistenceAdapter } from './src/adapters/session-persistence.js
 import { WorkerLifecycleAdapter } from './src/adapters/worker-lifecycle.js';
 import { ManagerSessionManager } from './src/manager/manager-session.js';
 import { AicReadAdapter } from './src/aic/read-adapter.js';
-import { IdempotencyStore } from './src/aic/idempotency-store.js';
+import { TaskStore } from './src/aic/idempotency-store.js';
 import { installCommands } from './src/commands.js';
 
 /** Cordis plugin name (row id in cordis.patch.yml is `aic-bridge`). */
 export const name = 'aic-bridge';
 
 /** Core DSH services the plugin needs before it can start. */
-export const inject = ['agents', 'sessions', 'sessionPersistence', 'commands'];
+export const inject = ['agents', 'sessions', 'sessionPersistence', 'commands', 'storageDomain'];
 
 /**
  * Plugin configuration schema (schemastery). Defaults mirror src/config.js.
@@ -59,17 +59,20 @@ export function apply(ctx, config) {
   const worker = new WorkerLifecycleAdapter(ctx);
   const manager = new ManagerSessionManager(ctx, cfg);
   const aic = new AicReadAdapter(cfg);
-  const idempotency = new IdempotencyStore();
+  // S3.1-B durable TaskRecord store over ctx.storageDomain; share lifecycle with the plugin.
+  const idempotency = new TaskStore(ctx, cfg);
+  manager.setTaskStore(idempotency);
 
   // S3.0: minimal Manager command entry (/aic-status, /aic). Registers slash
   // commands only when ctx.commands is mounted (dsh-base includes it).
   const commandDisposers = installCommands(ctx, cfg, { manager, worker });
 
-  // Dispose command registrations + the cached Manager handle on teardown.
+  // Dispose command registrations + cached Manager handle + task store on teardown.
   ctx.effect(() => async () => {
     for (const dispose of commandDisposers) {
       try { dispose(); } catch { /* best-effort */ }
     }
+    try { await idempotency.close(); } catch { /* best-effort */ }
   });
 
   return { cfg, approval, persistence, worker, manager, aic, idempotency };
