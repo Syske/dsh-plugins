@@ -130,6 +130,11 @@ export function installCommands(ctx, config = {}, deps = {}) {
   disposers.push(commands.register({
     name: 'aic',
     description: 'Send <task text> to the canonical AIC Manager session. Reports accepted/executed/persisted/replied/failed/unknown.',
+    // Declare free-form input so the DSH Web UI composer keeps the command open to
+    // collect the task text and delivers it as `invocation.rawInput`. Without this
+    // descriptor the composer executes `/aic` argument-less (rawInput '') and the
+    // handler below only ever returns `usage: /aic <task text>`.
+    input: { hint: '<task text> — free-form task text for the AIC Manager (single message)' },
     handler: async (invocation) => {
       const text = String(invocation?.rawInput ?? '').trim();
       if (!text) return { kind: 'error', text: 'usage: /aic <task text>' };
@@ -141,12 +146,16 @@ export function installCommands(ctx, config = {}, deps = {}) {
         const taskId = 'cmd-' + payloadHash(text);
         try {
           const res = await manager.dispatchTask({ taskId, text });
-          const ok = res.status === 'worker_done';
+          // worker_done = a real success this call. `idempotent` = the identical task
+          // already reached a terminal success previously (replay) — that is ALSO a
+          // success, not an error (it must not render red).
+          const ok = res.status === 'worker_done' || (res.status === 'idempotent' && res.state === 'worker_done');
           const detail = `task=${taskId} state=${res.state} worker=${res.workerSessionId ?? '?'}` +
             (res.accepted !== undefined ? ` accepted=${res.accepted} executed=${res.executed} persisted=${res.persisted} replied=${res.workerReplied}` : '') +
             (res.note ? ` note="${res.note}"` : '') + (res.error ? ` error="${res.error}"` : '');
+          const prefix = res.status === 'idempotent' ? 'durable (idempotent replay, already succeeded)' : 'durable';
           return ok
-            ? { kind: 'success', text: `AIC Manager ${res.managerSessionId}: durable ${detail}` }
+            ? { kind: 'success', text: `AIC Manager ${res.managerSessionId}: ${prefix} ${detail}` }
             : { kind: 'error', text: `AIC Manager ${res.managerSessionId}: ${res.status} ${detail}` };
         } catch (e) {
           return { kind: 'error', text: `aic dispatch failed: ${e?.message ?? e}` };

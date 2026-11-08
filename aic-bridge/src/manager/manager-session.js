@@ -20,6 +20,23 @@ import { SessionPersistenceAdapter } from '../adapters/session-persistence.js';
 import { validateManagerRoute } from '../config.js';
 import { TaskStore, payloadHash, deriveWorkerSessionId } from '../aic/idempotency-store.js';
 
+/**
+ * Resolve the DSH message factory for a child Worker. Priority:
+ *   1) an explicit option (`config.createUserMessage`) — index.js statically
+ *      imports it from `@deepseek-ai/dsh-llm` (a declared peerDependency the DSH
+ *      host provides), exactly as official plugins do;
+ *   2) a ctx-provided lookup (ctx.createUserMessage / ctx.get(...) / ctx.llm).
+ * Returns undefined when none is available so WorkerLifecycleAdapter fails closed
+ * with a clear message. This module keeps NO `@deepseek-ai/dsh-llm` import so it
+ * stays loadable in a bare repo without the DSH dependency graph.
+ */
+function resolveCreateUserMessage(ctx, explicit) {
+  if (typeof explicit === 'function') return explicit;
+  if (typeof ctx?.createUserMessage === 'function') return ctx.createUserMessage;
+  const svc = ctx?.get?.('createUserMessage') ?? ctx?.llm?.createUserMessage;
+  return typeof svc === 'function' ? svc : undefined;
+}
+
 const IN_FLIGHT = new Set(['dispatching', 'dispatched', 'worker_done', 'completed']);
 
 /** Non-empty assistant text from a worker event, or ''. */
@@ -38,7 +55,7 @@ export class ManagerSessionManager {
   constructor(ctx, config = {}) {
     this.ctx = ctx;
     this.config = config;
-    this.worker = new WorkerLifecycleAdapter(ctx);
+    this.worker = new WorkerLifecycleAdapter(ctx, { createUserMessage: resolveCreateUserMessage(ctx, config?.createUserMessage) });
     /** @type {TaskStore|null} */ this.taskStore = null;
     this.persistence = new SessionPersistenceAdapter(ctx);
   }
@@ -138,13 +155,17 @@ export class ManagerSessionManager {
     // (1) persist INTENT FIRST — durable before any worker action (crash window W1 entry)
     await store.put(intent);
 
-    // (2) create or reuse the deterministic worker session
+    // (2) create or reuse the deterministic worker session.
+    // Pass manager.cwd so the worker session lands beside the project (visible in
+    // the UI under the workspace bucket); without cwd it falls into `_no-cwd` and
+    // is not listed with the project's sessions.
+    const workerCwd = this.config?.manager?.cwd;
     let handle;
     try {
-      handle = await this.worker.createWorkerSession({ sessionId: workerSessionId, agentOptions: { provider: route.provider, model: route.model } });
+      handle = await this.worker.createWorkerSession({ sessionId: workerSessionId, ...(workerCwd ? { cwd: workerCwd } : {}), agentOptions: { provider: route.provider, model: route.model } });
     } catch (e) {
       if (/AlreadyExists|already exists|AlreadyOwned/i.test(String((e && e.message) || e))) {
-        try { handle = await this.worker.resumeWorkerSession({ resumeSessionId: workerSessionId, agentOptions: { provider: route.provider, model: route.model } }); }
+        try { handle = await this.worker.resumeWorkerSession({ resumeSessionId: workerSessionId, ...(workerCwd ? { cwd: workerCwd } : {}), agentOptions: { provider: route.provider, model: route.model } }); }
         catch (e2) { return this.#persistFailure(store, intent, 'worker-resume', e2); }
       } else {
         return this.#persistFailure(store, intent, 'worker-create', e);
@@ -169,7 +190,11 @@ export class ManagerSessionManager {
     if (!send || !send.executed || !send.persisted) finalState = 'failed';
     else if (replied) finalState = 'worker_done';
     else finalState = 'unknown'; // executed+persisted but no reply => cannot prove
-    try { await store.put({ ...intent, state: finalState, completionBasis: 'unknown', updatedAt: Date.now() }); } catch { /* keep intent */ }
+    const outcome = { ...intent, state: finalState, completionBasis: 'unknown', updatedAt: Date.now() };
+    // Clear any stale lastError carried from a previous failed attempt unless THIS
+    // attempt itself failed (so a recovered task no longer shows an old error).
+    if (finalState !== 'failed') delete outcome.lastError;
+    try { await store.put(outcome); } catch { /* keep intent */ }
     try { await handle.dispose?.(); } catch {}
 
     return {

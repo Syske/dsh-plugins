@@ -121,7 +121,20 @@ export class TaskStore {
   #table() { if (!this.dom) throw new Error('TaskStore not open'); return this.dom.table(TABLE_NAME); }
 
   /** @param {string} taskId @returns {Promise<any|undefined>} */
-  async get(taskId) { await this.open(); return this.#table().get(taskId); }
+  async get(taskId) {
+    await this.open();
+    const rec = this.#table().get(taskId);
+    // Self-heal: a non-`failed` record must not carry a stale `lastError` left by an
+    // earlier failed attempt (older builds persisted it). Rewrite once so reads are
+    // consistent with the current invariant. Best-effort (the host owns the store;
+    // this is a plugin process write).
+    if (rec && rec.state !== 'failed' && 'lastError' in rec) {
+      const cleaned = { ...rec };
+      delete cleaned.lastError;
+      try { await this.#table().put(taskId, cleaned); return cleaned; } catch { /* keep original */ }
+    }
+    return rec;
+  }
 
   /** Write-before validation, then durable put. @param {any} record */
   async put(record) {

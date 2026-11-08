@@ -85,8 +85,16 @@ test('sendMessage input validation', async () => {
   await assert.rejects(() => w.sendMessage({}, 'x'), /requires a WorkerHandle/);
 });
 
-test('sendMessage: missing createUserMessage factory -> clear error', async () => {
+test('sendMessage: missing createUserMessage factory (no bare import) -> fail-closed', async () => {
   const { ctx, handle } = makeEnv();
-  const w = new WorkerLifecycleAdapter(ctx); // no factory injected; @deepseek-ai/dsh-llm not resolvable here
+  const w = new WorkerLifecycleAdapter(ctx); // no factory injected; no dynamic import fallback
   await assert.rejects(() => w.sendMessage(handle, 'hi'), /createUserMessage unavailable/);
+});
+
+test('sendMessage: injected factory is used exactly once (host-provided, statically imported at entry)', async () => {
+  const { ctx, handle, calls, createUserMessage } = makeEnv();
+  const w = new WorkerLifecycleAdapter(ctx, { createUserMessage });
+  await w.sendMessage(handle, 'injected');
+  assert.equal(calls.createUserMessage.length, 1);
+  assert.deepEqual(calls.createUserMessage[0].content, [{ type: 'text', text: 'injected' }]);
 });

@@ -58,6 +58,13 @@ test('registers aic-status + aic; disposers unregister', () => {
   const { ctx } = makeMockCtx(); const reg = makeCommands(); withCommands(ctx, reg);
   const disposers = installCommands(ctx, { manager: { sessionId: 'mgr', provider: 'mock', model: 'm' } });
   assert.ok(reg.defs.has('aic-status')); assert.ok(reg.defs.has('aic'));
+  // /aic takes free-form task text, so it MUST advertise an input descriptor (hint);
+  // otherwise the DSH Web UI composer runs it argument-less -> `usage: /aic <task text>`.
+  const aic = reg.defs.get('aic');
+  assert.equal(typeof aic.input?.hint, 'string');
+  assert.ok(aic.input.hint.length > 0);
+  // /aic-status takes no input.
+  assert.equal(reg.defs.get('aic-status').input, undefined);
   for (const d of disposers) d();
   assert.equal(reg.defs.has('aic'), false); assert.equal(reg.defs.has('aic-status'), false);
 });

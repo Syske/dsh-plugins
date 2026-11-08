@@ -101,6 +101,18 @@ test('TaskStore without storageDomain -> clear AIC_STORAGE_UNAVAILABLE', async (
   const ts = new TaskStore({}, {});
   await assert.rejects(() => ts.open(), (e) => e.code === 'AIC_STORAGE_UNAVAILABLE');
 });
+test('TaskStore.get self-heals: strips stale lastError from a non-failed record (and persists)', async () => {
+  const recs = new Map([['H', { taskId: 'H', state: 'worker_done', payloadHash: 'ph', managerSessionId: 'm', attempt: 1, completionBasis: 'unknown', createdAt: 1, updatedAt: 1, lastError: { code: 'OLD' } }]]);
+  const domain = { table: () => ({ get: (id) => recs.get(id), async put(id, r) { recs.set(id, r); }, async update() {} }) };
+  const fac = { async open() { return domain; }, async close() {} };
+  const ts = new TaskStore({ storageDomain: fac }, {});
+  const got = await ts.get('H');
+  assert.equal(got.lastError, undefined);
+  assert.equal(recs.get('H').lastError, undefined); // persisted cleaned
+  // failed records keep their lastError
+  recs.set('F', { taskId: 'F', state: 'failed', payloadHash: 'ph', managerSessionId: 'm', attempt: 1, completionBasis: 'unknown', createdAt: 1, updatedAt: 1, lastError: { code: 'KEEP' } });
+  assert.equal((await ts.get('F')).lastError.code, 'KEEP');
+});
 
 // ── dispatchTask ─────────────────────────────────────────────────────────────
 test('dispatchTask happy path -> worker_done (intent persisted before worker create)', async () => {
@@ -165,6 +177,25 @@ test('dispatchTask worker create throw -> failed (intent was persisted first)', 
   assert.ok(stored.lastError && stored.lastError.message.includes('boom'));
 });
 
+test('dispatchTask passes manager.cwd to worker create (session lands in project bucket, not _no-cwd)', async () => {
+  const s = store0();
+  const { m, calls } = mgr(s, { mode: 'reply' }); // mgr config manager.cwd = '/tmp/ws'
+  await m.dispatchTask({ taskId: 'TW', text: 'hello' });
+  assert.equal(calls.create.length, 1);
+  assert.equal(calls.create[0].cwd, '/tmp/ws');
+});
+
+test('dispatchTask clears a stale lastError when a retry reaches worker_done', async () => {
+  const seed = rec({ taskId: 'TR', state: 'failed', workerSessionId: deriveWorkerSessionId('TR'), lastError: { code: 'OLD', message: 'old failure', at: NOW } });
+  const s = store0([seed]);
+  const { m } = mgr(s, { mode: 'reply' });
+  const r = await m.dispatchTask({ taskId: 'TR', text: 'hello' });
+  assert.equal(r.status, 'worker_done');
+  const stored = await s.get('TR');
+  assert.equal(stored.state, 'worker_done');
+  assert.equal(stored.lastError, undefined);
+});
+
 // ── resolveRecovery ──────────────────────────────────────────────────────────
 test('resolveRecovery dispatching + user&reply evidence -> worker_done', async () => {
   const s = store0([rec({ taskId: 'T8', state: 'dispatching', workerSessionId: 'wkr-z' })]);
@@ -198,5 +229,19 @@ test('/aic durable path: success on worker_done; legacy when no store', async ()
   const r = await reg.d.get('aic').handler({ agent: { id: 'UI' }, rawInput: 'hello' });
   assert.equal(r.kind, 'success');
   assert.match(r.text, /durable/);
+  assert.match(r.text, /state=worker_done/);
+});
+
+test('/aic durable path: idempotent replay of a succeeded task is SUCCESS (not error)', async () => {
+  const reg = cmds();
+  // seed a task already worker_done for the SAME payload as 'hello'
+  const ph = payloadHash('hello');
+  const s = store0([rec({ taskId: 'cmd-' + ph, state: 'worker_done', payloadHash: ph, workerSessionId: 'wkr-x' })]);
+  const { m } = mgr(s, { mode: 'reply' });
+  const ctx = { commands: reg, get: () => undefined };
+  installCommands(ctx, { manager: { sessionId: 'mgr', provider: 'mock', model: 'm' } }, { manager: m, worker: m.worker });
+  const r = await reg.d.get('aic').handler({ agent: { id: 'UI' }, rawInput: 'hello' });
+  assert.equal(r.kind, 'success'); // replay must not render as error
+  assert.match(r.text, /idempotent replay/i);
   assert.match(r.text, /state=worker_done/);
 });

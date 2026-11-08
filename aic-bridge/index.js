@@ -16,6 +16,7 @@
  *  - S4 Browser UI / loopback routes
  */
 import z from '@deepseek-ai/schemastery';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { resolveConfig, DEFAULT_CONFIG } from './src/config.js';
 import { ApprovalAdapter } from './src/adapters/approval.js';
 import { SessionPersistenceAdapter } from './src/adapters/session-persistence.js';
@@ -56,8 +57,8 @@ export function apply(ctx, config) {
 
   const approval = new ApprovalAdapter(ctx, cfg.approval);
   const persistence = new SessionPersistenceAdapter(ctx);
-  const worker = new WorkerLifecycleAdapter(ctx);
-  const manager = new ManagerSessionManager(ctx, cfg);
+  const worker = new WorkerLifecycleAdapter(ctx, { createUserMessage });
+  const manager = new ManagerSessionManager(ctx, { ...cfg, createUserMessage });
   const aic = new AicReadAdapter(cfg);
   // S3.1-B durable TaskRecord store over ctx.storageDomain; share lifecycle with the plugin.
   const idempotency = new TaskStore(ctx, cfg);

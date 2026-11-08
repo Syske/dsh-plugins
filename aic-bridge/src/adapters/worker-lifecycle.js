@@ -73,21 +73,18 @@ export class WorkerLifecycleAdapter {
   }
 
   /**
-   * Resolve the DSH message factory (`createUserMessage`) lazily, so this module
-   * stays syntax-checkable without the DSH dependency graph installed.
-   * @returns {Promise<Function>}
+   * Return the injected DSH message factory (`createUserMessage`).
+   *
+   * The factory MUST be provided via `WorkerLifecycleAdapter(ctx, { createUserMessage })`.
+   * The plugin entry (`index.js`) statically imports it from `@deepseek-ai/dsh-llm`
+   * — a declared peerDependency the DSH host resolves — and injects it, exactly as
+   * official plugins do (e.g. `dsh-agent-loop`). This module keeps NO bare
+   * `import('@deepseek-ai/dsh-llm')` (a runtime dynamic import would resolve by the
+   * plugin REALPATH and fail). A missing factory is a hard, explicit failure.
+   * @returns {Function}
    */
-  async #createUserMessageFactory() {
+  #createUserMessageFactory() {
     if (typeof this.createUserMessage === 'function') return this.createUserMessage;
-    try {
-      const mod = await import('@deepseek-ai/dsh-llm');
-      if (typeof mod.createUserMessage === 'function') {
-        this.createUserMessage = mod.createUserMessage;
-        return this.createUserMessage;
-      }
-    } catch (error) {
-      throw new Error('createUserMessage unavailable: pass it via WorkerLifecycleAdapter(ctx,{createUserMessage}) (' + (error?.code ?? error?.message) + ')');
-    }
     throw new Error('createUserMessage unavailable: pass it via WorkerLifecycleAdapter(ctx,{createUserMessage})');
   }
 
@@ -111,7 +108,7 @@ export class WorkerLifecycleAdapter {
     if (typeof text !== 'string' || text.trim() === '') {
       throw new Error('sendMessage requires a non-empty string');
     }
-    const make = await this.#createUserMessageFactory();
+    const make = this.#createUserMessageFactory();
     const message = make({ content: [{ type: 'text', text }], source: { kind: 'user' } });
     handle.followup(message);
     await handle.whenIdle();
