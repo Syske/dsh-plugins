@@ -1,0 +1,42 @@
+{
+  "name": "aic-bridge",
+  "version": "0.1.0",
+  "description": "AIC x DSH fusion A1 plugin with a minimal Manager command entry (S3.0): /aic-status and /aic <task>. The Manager is a top-level Agent Session using an explicit, fail-closed model route (manager.provider/model); the AIC Adapter is read-only and approval is fail-closed. Does not fork or modify DSH core.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-agent": "^0.2.1-rc.5",
+    "@deepseek-ai/dsh-session": "^0.2.1-rc.5",
+    "@deepseek-ai/dsh-session-persistence": "^0.2.1-rc.5",
+    "@deepseek-ai/dsh-user-approval": "^0.2.1-rc.5",
+    "@deepseek-ai/schemastery": "~3.18.5"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
+  }
+}

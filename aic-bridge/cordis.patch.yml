@@ -1,0 +1,38 @@
+# aic-bridge bundle patch — S0 skeleton + S1 adapters.
+#
+# Only insert the aic-bridge row. Do NOT re-insert `storage` or
+# `session-projection-cache` here: dsh-web-app already mounts them, and a
+# second insert of those ids crashes the loader (`duplicate loader entry id`).
+# (Same constraint observed in dsh-chatgpt-bridge/cordis.patch.yml.)
+- insert:
+    - id: aic-bridge
+      name: 'aic-bridge'
+      config:
+        manager:
+          # manager.provider / manager.model 为 config.js schema 字段（默认空字符串 ''，
+          # 见 DEFAULT_CONFIG.manager）；必须显式填写为已注册的 Provider 路由与模型 id。
+          # FAIL-CLOSED：两者任一为空时，/aic-status 与 /aic 会阻止 Manager 创建与任务发送
+          # 并返回配置错误（空配置不是可运行的默认配置）。此处只写路由名称，绝不填写真实密钥。
+          # 示例（请按实际已注册 Provider 取消注释并填写）：
+          #   provider: <provider-id>
+          #   model: <model-id>
+          sessionId: ''
+          cwd: ''
+        approval:
+          read: auto
+          test: auto
+          build: auto
+          workspaceWrite: auto
+          localCommit: auto
+          externalWrite: ask
+          gitPush: ask
+          npmPublish: ask
+          githubRelease: ask
+          secrets: deny
+          dangerFullAccess: ask
+        storage:
+          dataDir: ''
+        aic:
+          baseUrl: ''
+          readOnly: true
+        logLevel: info
