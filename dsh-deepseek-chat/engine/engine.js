@@ -183,6 +183,10 @@ export function parseStreamReply(raw) {
   let thinking = ''
   let finished = false
   let currentType = 'RESPONSE'
+  /** True only while the *last observed fragment* was explicitly a THINK one. */
+  let lastFragmentIsThinking = false
+  /** True once the stream has declared an answer fragment (RESPONSE / TEXT). */
+  let sawAnswerType = false
 
   const searchResults = []
   const openById = new Map()
@@ -215,7 +219,15 @@ export function parseStreamReply(raw) {
   }
 
   const appendContent = (text) => {
-    if (isThinkingType(currentType)) thinking += text
+    // `response/fragments/-1/content` appends to the last fragment, so a delta
+    // continues that fragment: reasoning stays in the reasoning buffer and
+    // answers in the body. The page does not always announce the switch — it
+    // also streams answer text straight onto a reasoning fragment before the
+    // first RESPONSE fragment arrives, which is what made replies start
+    // mid-sentence. Distinguish the two cases by content: reasoning fragments
+    // only ever precede the answer, so once any answer text exists every later
+    // delta is answer text.
+    if (lastFragmentIsThinking && body === '' && !sawAnswerType) thinking += text
     else body += text
   }
 
@@ -224,7 +236,11 @@ export function parseStreamReply(raw) {
     for (const frag of fragments) {
       if (typeof frag !== 'object' || frag === null) continue
       const type = frag['type']
-      if (typeof type === 'string') currentType = type
+      if (typeof type === 'string') {
+        currentType = type
+        lastFragmentIsThinking = isThinkingType(type)
+        if (!lastFragmentIsThinking) sawAnswerType = true
+      }
       const content = frag['content']
       if (typeof content === 'string' && content !== '') {
         if (isThinkingType(type)) thinking += content
@@ -295,14 +311,22 @@ export function parseStreamReply(raw) {
         for (const frag of fragments) {
           if (typeof frag !== 'object' || frag === null) continue
           const type = frag['type']
-          if (typeof type === 'string') currentType = type
+          if (typeof type === 'string') {
+            currentType = type
+            lastFragmentIsThinking = isThinkingType(type)
+            if (!lastFragmentIsThinking) sawAnswerType = true
+          }
           const content = frag['content']
           if (typeof content !== 'string' || content === '') continue
           if (isThinkingType(type)) newThinking += content
           else if (type === 'RESPONSE' || type === 'TEXT') newBody += content
         }
-        if (newBody !== '') body = newBody
-        if (newThinking !== '') thinking = newThinking
+        // A snapshot is authoritative for the fragments it actually carries, but
+        // it must never *shrink* what we already assembled: partial snapshots
+        // arrive mid-stream and used to wipe the answer body (or the reasoning)
+        // accumulated from the incremental ops. Keep the longer text.
+        if (newBody.length >= body.length) body = newBody
+        if (newThinking.length >= thinking.length) thinking = newThinking
       }
       continue
     }
@@ -1079,7 +1103,7 @@ export class DeepSeekWebEngine {
         if (capture !== null && capture.started) {
           captureSeen = true
           const parsed = parseStreamReply(capture.text)
-          if (parsed.markdown !== '') {
+          if (parsed.markdown !== '' && parsed.markdown.length >= replyMarkdown.length) {
             replyMarkdown = parsed.markdown
             this.store.upsertMessage(chatId, {
               id: assistantId, role: 'assistant', content: replyMarkdown, ts: Date.now(),
@@ -1101,7 +1125,11 @@ export class DeepSeekWebEngine {
             if (dom.markdown !== lastDom) {
               lastDom = dom.markdown
               domStable = 0
-              replyMarkdown = dom.markdown
+              // The page renders long answers in a virtualised list, so a DOM
+              // scrape can return only the part still mounted — that is how a
+              // reply ended up starting mid-sentence. A shorter snapshot never
+              // replaces text we already hold.
+              if (dom.markdown.length >= replyMarkdown.length) replyMarkdown = dom.markdown
             } else {
               domStable += 1
             }
