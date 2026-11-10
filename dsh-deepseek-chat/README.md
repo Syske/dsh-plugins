@@ -1,5 +1,49 @@
 # dsh-deepseek-chat
 
+> ## ⚠️ ARCHIVED — DO NOT USE
+>
+> **This plugin is no longer maintained and should not be installed.** It drives
+> `chat.deepseek.com` through browser automation and undocumented internal endpoints,
+> which conflicts with the DeepSeek Terms of Use and **can get your account suspended**.
+>
+> ### What the terms prohibit
+>
+> From the [DeepSeek Terms of Use](https://cdn.deepseek.com/policies/zh-CN/deepseek-terms-of-use.html),
+> clause 3.5 — activities that harm the service:
+>
+> - **3.5 (3)** forbids "抓取、复制本服务及其所包含的任何内容" (scraping or copying the
+>   service or any of its content) "以任何方式（包括但不限于通过**任何机器人、爬虫、其他自动设置**…）"
+>   (by any means, including any bot, crawler, or other automated setup).
+> - **3.5 (1)** forbids using "未经许可的数据" (unauthorised data).
+> - **3.5 (2)** forbids interfering with operations by imposing an unreasonable load.
+>
+> ### How this plugin conflicts with them
+>
+> | Implementation detail | Clause |
+> | --- | --- |
+> | Playwright fills the composer and presses Enter to send messages | 3.5 (3) "automated setup" |
+> | Wraps `XMLHttpRequest`/`fetch` and `tee()`s the response stream to read replies | 3.5 (3) "scraping, copying content" |
+> | Reads `localStorage.userToken` and calls the undocumented `chat/history_messages` endpoint to bulk-import history | 3.5 (1) "unauthorised data" |
+> | Launches a separate Chromium profile, which looks like an automated client to risk control | 3.5 (2) |
+>
+> ### Observed consequence
+>
+> An account using this plugin received a temporary suspension from DeepSeek
+> ("由于违反用户使用规范，你的账号已被禁言至…"). The exact trigger was not confirmed by
+> DeepSeek, but the behaviours above are the plausible causes.
+>
+> ### Use an official route instead
+>
+> Use the [DeepSeek API](https://platform.deepseek.com/) with an API key. It is billed per
+> token, but it is explicitly supported, stable, and cannot get your account suspended.
+> For a DSH-native option, any OpenAI-compatible provider configured in
+> **Settings → Models** works.
+>
+> The code remains public for reference and study only. It is not supported, and issues
+> are not monitored.
+
+---
+
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that brings
 [chat.deepseek.com](https://chat.deepseek.com) into the Web GUI as a native chat panel.
 

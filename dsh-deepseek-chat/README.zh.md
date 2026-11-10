@@ -1,5 +1,42 @@
 # dsh-deepseek-chat
 
+> ## ⚠️ 已归档 —— 请勿使用
+>
+> **本插件已停止维护，不应再安装使用。** 它通过浏览器自动化与未公开的内部接口驱动
+> `chat.deepseek.com`，与《DeepSeek 用户协议》冲突，**可能导致账号被封禁**。
+>
+> ### 协议禁止的行为
+>
+> 依据 [DeepSeek 用户协议](https://cdn.deepseek.com/policies/zh-CN/deepseek-terms-of-use.html) 第 3.5 条：
+>
+> - **3.5（3）** 禁止"以任何方式（包括但不限于通过**任何机器人、爬虫、其他自动设置**、设置镜像）来抓取、复制本服务及其所包含的任何内容"
+> - **3.5（1）** 禁止"使用未经许可的数据"
+> - **3.5（2）** 禁止"以导致计算机系统或设施承受不合理负载的方式干扰运营"
+>
+> ### 本插件的冲突点
+>
+> | 实现方式 | 对应条款 |
+> | --- | --- |
+> | 用 Playwright 自动填入输入框并按 Enter 发送 | 3.5（3）"其他自动设置" |
+> | 包装 `XMLHttpRequest`/`fetch` 并 `tee()` 复制响应流以读取回复 | 3.5（3）"抓取、复制本服务内容" |
+> | 读取 `localStorage.userToken`，调用未公开的 `chat/history_messages` 接口批量拉取历史 | 3.5（1）"未经许可的数据" |
+> | 启动独立 Chromium profile，在风控看来像自动化客户端 | 3.5（2） |
+>
+> ### 实际后果
+>
+> 使用本插件的账号收到了 DeepSeek 的临时封禁（"由于违反用户使用规范，你的账号已被禁言至…"）。
+> 具体触发原因未经 DeepSeek 确认，但上述行为是最可能的原因。
+>
+> ### 请改用官方方式
+>
+> 使用 [DeepSeek API](https://platform.deepseek.com/)（需 API key，按 token 计费）——官方明确支持、
+> 稳定，且不会导致账号被封。若希望直接在 DSH 内使用，任何 OpenAI 兼容的模型服务都可以在
+> **设置 → 模型** 中配置。
+>
+> 代码仅保留作参考学习之用，不再提供支持，也不再跟进 issue。
+
+---
+
 将 [chat.deepseek.com](https://chat.deepseek.com) 集成进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 的 Web GUI，作为一个原生聊天面板使用。
 
