@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
       'panel.statusLoggedIn': '已登录', 'panel.statusNotLoggedIn': '未登录', 'panel.statusLaunching': '浏览器启动中…',
       'panel.statusError': '引擎错误', 'panel.statusUnknown': '状态未知', 'panel.statusIdle': '已登录 · 空闲（下次提问自动唤醒）',
       'panel.deepThink': '深度思考', 'panel.search': '智能搜索', 'panel.roleYou': '你', 'panel.thinking': '思考过程',
+      'panel.thinkCount': '{count} 字',
       'panel.emptyTitle': '开始新的 DeepSeek 对话', 'panel.emptyBody': '在下方输入你的问题，回复通过你的 DeepSeek 网页会话生成。',
       'panel.streaming': '生成中', 'panel.noChats': '暂无对话',
       'panel.pullHistory': '拉取历史', 'panel.recoverHint': '从网页端拉取已有会话到本地',
@@ -62,6 +63,7 @@ window.__ModuleLoader__.load({
       'panel.statusLoggedIn': 'Signed in', 'panel.statusNotLoggedIn': 'Not signed in', 'panel.statusLaunching': 'Starting browser…',
       'panel.statusError': 'Engine error', 'panel.statusUnknown': 'Unknown', 'panel.statusIdle': 'Signed in · idle (auto-wakes on next message)',
       'panel.deepThink': 'Deep Think', 'panel.search': 'Web Search', 'panel.roleYou': 'You', 'panel.thinking': 'Thinking',
+      'panel.thinkCount': '{count} chars',
       'panel.emptyTitle': 'Start a new DeepSeek conversation', 'panel.emptyBody': 'Type your question below; replies are generated through your DeepSeek web session.',
       'panel.streaming': 'Thinking', 'panel.noChats': 'No conversations',
       'panel.pullHistory': 'Pull history', 'panel.recoverHint': 'Import existing web conversations into local',
@@ -328,11 +330,19 @@ window.__ModuleLoader__.load({
           while (s < inner.length && inner[s].trim() === '') s++
           const titleRe = /^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:思考过程|思考|Thinking(?: process)?)\s*(?:\*\*)?\s*$/i
           if (s < inner.length && titleRe.test(inner[s])) inner.splice(0, s + 1)
+          // Show how much reasoning is folded away, so a collapsed trace still
+          // tells the reader whether it is worth opening.
+          const thinkText = inner.join('\n').trim()
+          const thinkChars = (thinkText.match(/\S/g) || []).length
+          const countLabel = thinkChars > 0 && typeof opts.thinkCount === 'function'
+            ? opts.thinkCount(thinkChars)
+            : ''
           blocks.push(h('details', { key: nk(), className: 'ddc-think' },
             h('summary', { className: 'ddc-think-summary' },
               h('span', { className: 'ddc-think-ico' }, '✧'),
-              h('span', null, opts.thinkLabel || '思考过程')),
-            h('div', { className: 'ddc-think-body' }, renderMarkdown(inner.join('\n'), opts))))
+              h('span', null, opts.thinkLabel || '思考过程'),
+              countLabel !== '' ? h('span', { className: 'ddc-think-count' }, countLabel) : null),
+            h('div', { className: 'ddc-think-body' }, renderMarkdown(thinkText, opts))))
           continue
         }
         const heading = /^(#{1,6})\s+(.*)$/.exec(line)
@@ -629,7 +639,10 @@ window.__ModuleLoader__.load({
                             h('div', { className: 'ddc-msgmeta' },
                               h('span', { className: 'ddc-speaker' }, 'DeepSeek'),
                               msg.streaming === true ? h('span', { className: 'ddc-badge' }, tt('panel.streaming') + '…') : null),
-                            h('div', { className: 'ddc-answer' }, renderMarkdown(msg.content, { thinkLabel: tt('panel.thinking') })),
+                            h('div', { className: 'ddc-answer' }, renderMarkdown(msg.content, {
+                              thinkLabel: tt('panel.thinking'),
+                              thinkCount: (n) => fmt(tt('panel.thinkCount'), { count: n }),
+                            })),
                             msg.error ? h('div', { className: 'ddc-msgerror' }, msg.error) : null)))),
             ),
             h('div', { className: 'ddc-composer' },
@@ -809,6 +822,9 @@ window.__ModuleLoader__.load({
       .ddc-think-summary::-webkit-details-marker { display: none; }
       .ddc-think-summary:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
       .ddc-think-ico { color: var(--dsw-alias-link); }
+      .ddc-think-count { color: var(--dsw-alias-label-secondary); opacity: 0.75;
+        font-variant-numeric: tabular-nums; }
+      .ddc-think-count::before { content: '·'; margin-right: 5px; opacity: 0.6; }
       .ddc-think-body { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 11px; margin-top: 8px;
         color: var(--dsw-alias-label-secondary); }
       .ddc-think-body p { margin: 0 0 8px; }
